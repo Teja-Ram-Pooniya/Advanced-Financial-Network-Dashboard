@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 import streamlit as st
+import scipy.stats as stats
+import math
 
 def generate_fallback_data(tickers, periods_days):
     """Generates simulated market data if real data fetching fails."""
@@ -176,3 +178,34 @@ def simulate_merton_jump_diffusion(S0, mu, sigma, lam, j_mu, j_sigma, T, N):
         S[i] = S[i-1] * np.exp(drift + diffusion) * (1 + jump_effect)
         
     return t, S
+
+def merton_black_scholes_call(S, K, T, r, sigma):
+    """Standard Black-Scholes Call Option Formula used as a primitive."""
+    if T <= 0:
+        return max(0.0, S - K)
+    d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
+    d2 = d1 - sigma * np.sqrt(T)
+    return S * stats.norm.cdf(d1) - K * stats.norm.cdf(d2)
+
+def price_merton_jump_diffusion_option(S, K, T, r, sigma, lam, j_mu, j_sigma, max_jumps=20):
+    """
+    Prices European Call Options using Merton's 1976 Infinite Series Formula.
+    Weighs a sequence of adjusted Black-Scholes models via Poisson Probabilities.
+    """
+    # Adjusted jump component expectation under Q-measure
+    k_expected = np.exp(j_mu + 0.5 * j_sigma**2) - 1
+    lam_prime = lam * (1 + k_expected)
+    
+    option_price = 0.0
+    for n in range(max_jumps):
+        # Poisson Weighting element
+        poisson_weight = (np.exp(-lam_prime * T) * (lam_prime * T)**n) / math.factorial(n)
+        
+        # Volatility and Drift adjustments for the 'n' jumps scenario
+        r_n = r - lam * k_expected + (n * j_mu) / T if T > 0 else r
+        sigma_n = np.sqrt(sigma**2 + (n * j_sigma**2) / T) if T > 0 else sigma
+        
+        # Aggregate standard BS pricing iterations
+        option_price += poisson_weight * merton_black_scholes_call(S, K, T, r_n, sigma_n)
+        
+    return option_price

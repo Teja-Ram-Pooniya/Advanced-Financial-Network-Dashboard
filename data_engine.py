@@ -25,6 +25,9 @@ def fetch_real_market_data(tickers, periods_days):
     """
     Fetches historical market data using yfinance.
     Falls back to simulated data if rate limits are hit or data is missing.
+    
+    Note: Uses explicit start/end dates instead of 'period' parameter to support
+    arbitrary day counts (yfinance 'period' only accepts fixed values like 1y, 2y, etc.)
     """
     try:
         if not tickers:
@@ -33,9 +36,14 @@ def fetch_real_market_data(tickers, periods_days):
         data_dict = {}
         rate_limit_hit = False
         
+        # Calculate explicit date range for arbitrary lookback periods
+        end_date = pd.Timestamp.now()
+        start_date = end_date - pd.Timedelta(days=periods_days)
+        
         for ticker in tickers:
             try:
-                ticker_data = yf.Ticker(ticker).history(period=f"{periods_days}d")
+                # Use start/end parameters instead of period for arbitrary day ranges
+                ticker_data = yf.Ticker(ticker).history(start=start_date, end=end_date)
                 if not ticker_data.empty and 'Close' in ticker_data.columns:
                     data_dict[ticker] = ticker_data['Close']
                 else:
